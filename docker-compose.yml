@@ -1,0 +1,366 @@
+networks:
+  kafka_network:
+    driver: bridge
+
+volumes:
+  Controller01Data:
+    driver: local
+  Controller02Data:
+    driver: local
+  Broker01Data:
+    driver: local
+  Broker02Data:
+    driver: local
+  Broker03Data:
+    driver: local
+  grafana_data:
+    driver: local
+  prometheus_data:
+    driver: local
+
+services:
+  ## Controller 01
+  Controller01Service:
+    image: bitnami/kafka:3.9.0-debian-12-r12
+    restart: unless-stopped
+    container_name: Controller01Container
+    environment:
+      - KAFKA_CFG_NODE_ID=1001
+      - KAFKA_KRAFT_CLUSTER_ID=HsDBs9l6UUmQq7Y5E6bNlw
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1001@Controller01Service:9093,1002@Controller02Service:9093
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENERS=CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_PROCESS_ROLES=controller
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      # JMX 설정
+      - JMX_PORT=9999
+      - KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999
+    ports:
+      - "9999:9999" # JMX 포트 노출
+    networks:
+      - kafka_network
+    volumes:
+      - "Controller01Data:/bitnami/kafka"
+
+  ## Controller 02
+  Controller02Service:
+    image: bitnami/kafka:3.9.0-debian-12-r12
+    restart: unless-stopped
+    container_name: Controller02Container
+    environment:
+      - KAFKA_CFG_NODE_ID=1002
+      - KAFKA_KRAFT_CLUSTER_ID=HsDBs9l6UUmQq7Y5E6bNlw
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1001@Controller01Service:9093,1002@Controller02Service:9093
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENERS=CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_PROCESS_ROLES=controller
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      # JMX 설정
+      - JMX_PORT=9999
+      - KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999
+    ports:
+      - "10003:9999" # 외부 포트 충돌 방지
+    networks:
+      - kafka_network
+    volumes:
+      - "Controller02Data:/bitnami/kafka"
+
+  ## Broker 01
+  Broker01Service:
+    image: bitnami/kafka:3.9.0-debian-12-r12
+    restart: unless-stopped
+    container_name: Broker01Container
+    ports:
+      - "10000:9094"
+      - "10004:9999" # JMX 포트 노출
+      - "11001:11001"
+    environment:
+      - KAFKA_CFG_BROKER_ID=11
+      - KAFKA_CFG_NODE_ID=11
+      - KAFKA_KRAFT_CLUSTER_ID=HsDBs9l6UUmQq7Y5E6bNlw
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1001@Controller01Service:9093,1002@Controller02Service:9093
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://Broker01Service:9092,EXTERNAL://127.0.0.1:10000
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=2
+      - KAFKA_CFG_PROCESS_ROLES=broker
+      - KAFKA_CFG_NUM_REPLICA_FETCHERS=4
+      - KAFKA_CFG_NUM_IO_THREADS=12
+      - KAFKA_CFG_NUM_NETWORK_THREADS=12
+      - KAFKA_CFG_LOG_CLEANER_THREADS=4
+      - KAFKA_CFG_ACKS=all
+      - KAFKA_CFG_COMPRESSION_TYPE=zstd
+      - KAFKA_CFG_COMPRESSION_ZSTD_LEVEL=1
+      # JMX 설정
+      - JMX_PORT=9999
+      - KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999
+      - KAFKA_OPTS=-javaagent:/usr/share/jmx_exporter/jmx_prometheus_javaagent.jar=11001:/usr/share/jmx_exporter/kafka-broker.yml
+    networks:
+      - kafka_network
+    volumes:
+      - "Broker01Data:/bitnami/kafka"
+      - ./jmx-exporter:/usr/share/jmx_exporter/
+    depends_on:
+      - Controller01Service
+      - Controller02Service
+
+  ## Broker 02
+  Broker02Service:
+    image: bitnami/kafka:3.9.0-debian-12-r12
+    restart: unless-stopped
+    container_name: Broker02Container
+    ports:
+      - "10001:9094"
+      - "10005:9999" # JMX 포트 노출
+      - "11002:11001"
+    environment:
+      - KAFKA_CFG_BROKER_ID=12
+      - KAFKA_CFG_NODE_ID=12
+      - KAFKA_KRAFT_CLUSTER_ID=HsDBs9l6UUmQq7Y5E6bNlw
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1001@Controller01Service:9093,1002@Controller02Service:9093
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://Broker02Service:9092,EXTERNAL://127.0.0.1:10001
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=2
+      - KAFKA_CFG_PROCESS_ROLES=broker
+      - KAFKA_CFG_NUM_REPLICA_FETCHERS=4
+      - KAFKA_CFG_NUM_IO_THREADS=12
+      - KAFKA_CFG_NUM_NETWORK_THREADS=12
+      - KAFKA_CFG_LOG_CLEANER_THREADS=4
+      - KAFKA_CFG_ACKS=all
+      - KAFKA_CFG_COMPRESSION_TYPE=zstd
+      - KAFKA_CFG_COMPRESSION_ZSTD_LEVEL=1
+      # JMX 설정
+      - JMX_PORT=9999
+      - KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999
+      - KAFKA_OPTS=-javaagent:/usr/share/jmx_exporter/jmx_prometheus_javaagent.jar=11001:/usr/share/jmx_exporter/kafka-broker.yml
+    networks:
+      - kafka_network
+    volumes:
+      - "Broker02Data:/bitnami/kafka"
+      - ./jmx-exporter:/usr/share/jmx_exporter/
+    depends_on:
+      - Controller01Service
+      - Controller02Service
+
+  ## Broker 03
+  Broker03Service:
+    image: bitnami/kafka:3.9.0-debian-12-r12
+    restart: unless-stopped
+    container_name: Broker03Container
+    ports:
+      - "10002:9094"
+      - "10006:9999" # JMX 포트 노출
+      - "11003:11001"
+    environment:
+      - KAFKA_CFG_BROKER_ID=13
+      - KAFKA_CFG_NODE_ID=13
+      - KAFKA_KRAFT_CLUSTER_ID=HsDBs9l6UUmQq7Y5E6bNlw
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1001@Controller01Service:9093,1002@Controller02Service:9093
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://Broker03Service:9092,EXTERNAL://127.0.0.1:10002
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=3
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=2
+      - KAFKA_CFG_PROCESS_ROLES=broker
+      - KAFKA_CFG_NUM_REPLICA_FETCHERS=4
+      - KAFKA_CFG_NUM_IO_THREADS=12
+      - KAFKA_CFG_NUM_NETWORK_THREADS=12
+      - KAFKA_CFG_LOG_CLEANER_THREADS=4
+      - KAFKA_CFG_ACKS=all
+      - KAFKA_CFG_COMPRESSION_TYPE=zstd
+      - KAFKA_CFG_COMPRESSION_ZSTD_LEVEL=1
+      # JMX 설정
+      - JMX_PORT=9999
+      - KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.port=9999
+      - KAFKA_OPTS=-javaagent:/usr/share/jmx_exporter/jmx_prometheus_javaagent.jar=11001:/usr/share/jmx_exporter/kafka-broker.yml
+    networks:
+      - kafka_network
+    volumes:
+      - "Broker03Data:/bitnami/kafka"
+      - ./jmx-exporter:/usr/share/jmx_exporter/
+    depends_on:
+      - Controller01Service
+      - Controller02Service
+
+  ## JMX Exporter for Controller01
+  jmxExporterController01:
+    image: sscaling/jmx-prometheus-exporter:latest # 안정적인 버전 명시
+    container_name: jmxExporterController01
+    ports:
+      - "5556:5556"
+    environment:
+      - CONFIG=/opt/jmx-exporter/config.yaml
+      - JAVA_OPTS=-Dcom.sun.management.jmxremote.host=Controller01Service -Dcom.sun.management.jmxremote.port=9999
+    volumes:
+      - ./jmx-exporter-config.yaml:/opt/jmx-exporter/config.yaml
+    networks:
+      - kafka_network
+    depends_on:
+      - Controller01Service
+
+  ## JMX Exporter for Controller02
+  jmxExporterController02:
+    image: sscaling/jmx-prometheus-exporter:latest
+    container_name: jmxExporterController02
+    ports:
+      - "5557:5556"
+    environment:
+      - CONFIG=/opt/jmx-exporter/config.yaml
+      - JAVA_OPTS=-Dcom.sun.management.jmxremote.host=Controller02Service -Dcom.sun.management.jmxremote.port=9999
+    volumes:
+      - ./jmx-exporter-config.yaml:/opt/jmx-exporter/config.yaml
+    networks:
+      - kafka_network
+    depends_on:
+      - Controller02Service
+
+  ## JMX Exporter for Broker01
+  jmxExporterBroker01:
+    image: sscaling/jmx-prometheus-exporter:latest
+    container_name: jmxExporterBroker01
+    ports:
+      - "5558:5556"
+    environment:
+      - CONFIG=/opt/jmx-exporter/config.yaml
+      - JAVA_OPTS=-Dcom.sun.management.jmxremote.host=Broker01Service -Dcom.sun.management.jmxremote.port=9999
+    volumes:
+      - ./jmx-exporter-config.yaml:/opt/jmx-exporter/config.yaml
+    networks:
+      - kafka_network
+    depends_on:
+      - Broker01Service
+
+  ## JMX Exporter for Broker02
+  jmxExporterBroker02:
+    image: sscaling/jmx-prometheus-exporter:latest
+    container_name: jmxExporterBroker02
+    ports:
+      - "5559:5556"
+    environment:
+      - CONFIG=/opt/jmx-exporter/config.yaml
+      - JAVA_OPTS=-Dcom.sun.management.jmxremote.host=Broker02Service -Dcom.sun.management.jmxremote.port=9999
+    volumes:
+      - ./jmx-exporter-config.yaml:/opt/jmx-exporter/config.yaml
+    networks:
+      - kafka_network
+    depends_on:
+      - Broker02Service
+
+  ## JMX Exporter for Broker03
+  jmxExporterBroker03:
+    image: sscaling/jmx-prometheus-exporter:latest
+    container_name: jmxExporterBroker03
+    ports:
+      - "5560:5556"
+    environment:
+      - CONFIG=/opt/jmx-exporter/config.yaml
+      - JAVA_OPTS=-Dcom.sun.management.jmxremote.host=Broker03Service -Dcom.sun.management.jmxremote.port=9999
+    volumes:
+      - ./jmx-exporter-config.yaml:/opt/jmx-exporter/config.yaml
+    networks:
+      - kafka_network
+    depends_on:
+      - Broker03Service
+
+  kafbat-ui:
+    container_name: kafbat-ui
+    image: ghcr.io/kafbat/kafka-ui:latest
+    ports:
+      - 8070:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: Broker01Service:9092,Broker02Service:9092,Broker03Service:9092
+      KAFKA_CLUSTERS_0_METRICS_BOOTSTRAP_SERVERS: 11001
+      KAFKA_CLUSTERS_0_METRICS_TYPE: PROMETHEUS
+    depends_on:
+      - Broker01Service
+      - Broker02Service
+      - Broker03Service
+    networks:
+      - kafka_network
+
+  ## Node Exporter
+  nodeExporter:
+    image: prom/node-exporter:latest
+    container_name: nodeExporter
+    ports:
+      - "9101:9100"
+    command:
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/rootfs"
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+    networks:
+      - kafka_network
+    depends_on:
+      - Controller01Service
+      - Controller02Service
+
+  ## Kminion
+  kminion:
+    image: redpandadata/kminion:latest
+    container_name: kminion
+    ports:
+      - "8090:8080"
+    environment:
+      - KAFKA_BROKERS=Broker01Service:9092,Broker02Service:9092,Broker03Service:9092
+    networks:
+      - kafka_network
+    depends_on:
+      - Broker01Service
+      - Broker02Service
+      - Broker03Service
+
+  ## Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kafka_network
+    depends_on:
+      - jmxExporterController01
+      - jmxExporterController02
+      - jmxExporterBroker01
+      - jmxExporterBroker02
+      - jmxExporterBroker03
+      - kminion
+
+  ## Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - kafka_network
+    depends_on:
+      - prometheus

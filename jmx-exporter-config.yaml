@@ -1,0 +1,198 @@
+---
+# JMX Exporter 설정: Kafka 컨트롤러 및 브로커 메트릭을 Prometheus 형식으로 변환
+lowercaseOutputName: true # 메트릭 이름을 소문자로 변환하여 Prometheus 규칙 준수
+
+rules:
+  # Kafka Server 특화 메트릭 (토픽, 파티션, 클라이언트별)
+  - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
+    name: kafka_server_$1_$2
+    type: GAUGE
+    labels:
+      clientId: "$3"
+      topic: "$4"
+      partition: "$5"
+    help: "Kafka server metrics per topic and partition"
+
+  - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), brokerHost=(.+), brokerPort=(.+)><>Value
+    name: kafka_server_$1_$2
+    type: GAUGE
+    labels:
+      clientId: "$3"
+      broker: "$4:$5"
+    help: "Kafka server metrics with broker connection details"
+
+  # Kafka 코디네이터 메트릭 (GroupCoordinator, TransactionCoordinator 등)
+  - pattern: kafka.coordinator.(\w+)<type=(.+), name=(.+)><>Value
+    name: kafka_coordinator_$1_$2_$3
+    type: GAUGE
+    help: "Kafka coordinator metrics"
+
+  # KRaft 관련 메트릭 (컨트롤러 역할)
+  - pattern: "kafka.server<type=raft-metrics><>current-state: ([a-z]+)"
+    name: kafka_server_raft_metrics_current_state_info
+    type: GAUGE
+    value: 1
+    labels:
+      state: "$1"
+    help: "Current state of KRaft controller (e.g., leader, follower)"
+
+  - pattern: kafka.server<type=(raft-metrics|raft-channel-metrics|broker-metadata-metrics)><>([a-z-]+)-total
+    name: kafka_server_$1_$2_total
+    type: COUNTER
+    help: "Total counts for KRaft-specific metrics"
+
+  - pattern: kafka.server<type=(raft-metrics|raft-channel-metrics|broker-metadata-metrics)><>([a-z-]+)
+    name: kafka_server_$1_$2
+    type: GAUGE
+    help: "Gauges for KRaft-specific metrics"
+
+  # 초당 카운터 메트릭 (브로커 역할: 요청 처리율 등)
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*, (.+)=(.+), (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_total
+    type: COUNTER
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+    help: "Total count of per-second metrics with two key-value pairs"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*, (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_total
+    type: COUNTER
+    labels:
+      "$4": "$5"
+    help: "Total count of per-second metrics with one key-value pair"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*><>Count
+    name: kafka_$1_$2_$3_total
+    type: COUNTER
+    help: "Total count of per-second metrics"
+
+  # 쿼터 관련 메트릭 (브로커 역할: 사용자/클라이언트별 제한)
+  - pattern: kafka.server<type=(.+), user=(.+), client-id=(.+)><>([a-z-]+)
+    name: kafka_server_quota_$4
+    type: GAUGE
+    labels:
+      resource: "$1"
+      user: "$2"
+      clientId: "$3"
+    help: "Quota metrics per user and client"
+
+  - pattern: kafka.server<type=(.+), client-id=(.+)><>([a-z-]+)
+    name: kafka_server_quota_$3
+    type: GAUGE
+    labels:
+      resource: "$1"
+      clientId: "$2"
+    help: "Quota metrics per client"
+
+  - pattern: kafka.server<type=(.+), user=(.+)><>([a-z-]+)
+    name: kafka_server_quota_$3
+    type: GAUGE
+    labels:
+      resource: "$1"
+      user: "$2"
+    help: "Quota metrics per user"
+
+  # 일반 게이지 메트릭 (0-2개의 키/값 쌍)
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+), (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+    help: "Generic gauge metrics with two key-value pairs"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      "$4": "$5"
+    help: "Generic gauge metrics with one key-value pair"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>Value
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    help: "Generic gauge metrics"
+
+  # 히스토그램 메트릭 (Summary 모방: _count, _sum, 백분위수)
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+), (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_count
+    type: COUNTER
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+    help: "Count of histogram metrics with two key-value pairs"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+), (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3_sum
+    type: COUNTER
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+    help: "Sum of histogram metrics with two key-value pairs"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.*), (.+)=(.+)><>(\d+)thPercentile
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+      quantile: "0.$8"
+    help: "Percentile of histogram metrics with two key-value pairs"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_count
+    type: COUNTER
+    labels:
+      "$4": "$5"
+    help: "Count of histogram metrics with one key-value pair"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3_sum
+    type: COUNTER
+    labels:
+      "$4": "$5"
+    help: "Sum of histogram metrics with one key-value pair"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.*)><>(\d+)thPercentile
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      "$4": "$5"
+      quantile: "0.$6"
+    help: "Percentile of histogram metrics with one key-value pair"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>Count
+    name: kafka_$1_$2_$3_count
+    type: COUNTER
+    help: "Count of histogram metrics"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>Value
+    name: kafka_$1_$2_$3_sum
+    type: COUNTER
+    help: "Sum of histogram metrics"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>(\d+)thPercentile
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      quantile: "0.$4"
+    help: "Percentile of histogram metrics"
+
+  # 퍼센트 메트릭 (예: RequestHandlerAvgIdlePercent)
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)Percent\w*><>MeanRate
+    name: kafka_$1_$2_$3_percent
+    type: GAUGE
+    help: "Mean rate of percentage metrics"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)Percent\w*><>Value
+    name: kafka_$1_$2_$3_percent
+    type: GAUGE
+    help: "Current value of percentage metrics"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)Percent\w*, (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3_percent
+    type: GAUGE
+    labels:
+      "$4": "$5"
+    help: "Percentage metrics with one key-value pair"
